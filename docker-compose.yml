@@ -1,0 +1,27 @@
+services:
+  backend:
+    build: ./backend
+    container_name: comet-backend
+    environment:
+      DATABASE_URL: sqlite:////app/data/app.db
+      UPLOAD_DIR: /app/uploads
+      FRONTEND_ORIGIN: http://localhost:5173
+      SAMPLE_PROPAGATION_DAYS: 365
+    volumes:
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8000
+    container_name: comet-frontend
+    environment:
+      VITE_API_URL: http://backend:8000
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
