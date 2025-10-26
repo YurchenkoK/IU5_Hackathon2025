@@ -5,9 +5,12 @@ import {
   API_URL,
   deleteObservation,
   fetchObservations,
+  getAuthToken,
+  logout,
   requestComputation,
   submitObservation,
 } from './api';
+import { Login } from './Login';
 import type { ComputeResponse, Observation } from './types';
 
 type FormState = {
@@ -82,6 +85,7 @@ const thumbnailUrl = (path: string) => {
 };
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(!!getAuthToken());
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [observations, setObservations] = useState<Observation[]>([]);
   const [results, setResults] = useState<ComputeResponse | null>(null);
@@ -91,8 +95,27 @@ function App() {
   const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
-    loadObservations();
-  }, []);
+    if (isAuthenticated) {
+      loadObservations();
+    }
+  }, [isAuthenticated]);
+
+  const handleLoginSuccess = () => {
+    setIsAuthenticated(true);
+  };
+
+  const handleLogout = () => {
+    logout();
+    setIsAuthenticated(false);
+    setObservations([]);
+    setResults(null);
+    setError(null);
+    setSuccess(null);
+  };
+
+  if (!isAuthenticated) {
+    return <Login onLoginSuccess={handleLoginSuccess} />;
+  }
 
   async function loadObservations() {
     try {
@@ -181,9 +204,34 @@ function App() {
   return (
     <>
       <header className="page-header">
-        <p>Лаборатория вдохновлена Don’t Look Up.</p>
+        <p>Лаборатория вдохновлена Don't Look Up.</p>
         <h1>Кометное бюро</h1>
         <p>Добавьте минимум 5 наблюдений, чтобы получить приближенную орбиту и точку максимального сближения.</p>
+        <button 
+          onClick={handleLogout}
+          style={{
+            position: 'absolute',
+            top: '1rem',
+            right: '1rem',
+            padding: '0.5rem 1rem',
+            background: 'rgba(239, 68, 68, 0.2)',
+            border: '1px solid rgba(239, 68, 68, 0.4)',
+            borderRadius: '6px',
+            color: '#fca5a5',
+            cursor: 'pointer',
+            fontSize: '0.875rem',
+            fontWeight: '500',
+            transition: 'all 0.2s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.3)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+          }}
+        >
+          Выйти
+        </button>
       </header>
 
       <div className="grid">

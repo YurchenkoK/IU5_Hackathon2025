@@ -3,10 +3,11 @@
 Учебный pet‑проект «лаборатории комет» из Don't Look Up. Пользователь добавляет минимум пять наблюдений (RA/Dec, время, фотография), а backend на FastAPI + `poliastro`/`astropy` оценивает орбиту и ближайшее сближение с Землёй. Приложение работает в Docker-контейнерах и хранит данные в PostgreSQL через SQLModel.
 
 ## Стек
-- **Backend:** FastAPI, SQLModel (PostgreSQL), `poliastro`, `astropy`.
+- **Backend:** FastAPI, SQLModel (PostgreSQL), `poliastro`, `astropy`, JWT аутентификация.
 - **Frontend:** React + Vite, статическая выдача через nginx в контейнере.
 - **База данных:** PostgreSQL 16
 - **Инфраструктура:** Docker/Docker Compose для полного окружения, `uploads/` примонтирован наружу.
+- **Безопасность:** JWT токены, bcrypt хеширование паролей.
 
 ## Требования локально
 - Python 3.11+
@@ -37,6 +38,20 @@ docker compose up --build
 - PostgreSQL доступен на `localhost:5432`
 - Данные PostgreSQL сохраняются в Docker volume `postgres_data`
 - Каталог `./uploads` примонтирован, поэтому фотографии сохраняются вне контейнеров.
+
+### Аутентификация
+
+По умолчанию создаются два пользователя:
+- **admin / admin** - администратор
+- **user / user** - обычный пользователь
+
+Для доступа к API:
+1. Откройте Swagger UI: http://localhost:8000/docs
+2. Нажмите кнопку **"Authorize"**
+3. Введите: username: `admin`, password: `admin`
+4. Все endpoints теперь доступны
+
+Подробнее в [AUTH.md](AUTH.md)
 
 Остановить: `docker compose down`. Пересобрать после изменений: `docker compose up --build`.
 
