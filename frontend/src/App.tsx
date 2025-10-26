@@ -338,20 +338,24 @@ function App() {
         <p>Лаборатория вдохновлена Don't Look Up.</p>
         <h1>Кометное бюро</h1>
         <p>Добавьте минимум 5 наблюдений, чтобы получить приближенную орбиту и точку максимального сближения.</p>
-        <p style={{ textAlign: 'right' }}>
-          Пользователь: <strong>{user.username}</strong>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>Пользователь: <strong>{user.username}</strong></span>
           <button 
             onClick={handleLogout}
             style={{ 
-              marginLeft: '15px', 
-              padding: '3px 8px', 
+              padding: '4px 10px', 
               cursor: 'pointer',
-              fontSize: '0.85rem'
+              fontSize: '0.75rem',
+              backgroundColor: '#4a5568',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              fontWeight: '500'
             }}
           >
             Выйти
           </button>
-        </p>
+        </div>
       </header>
 
       <div className="grid">
