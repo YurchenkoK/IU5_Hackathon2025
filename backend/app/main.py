@@ -3,12 +3,17 @@ from pathlib import Path
 from typing import List
 from uuid import uuid4
 import shutil
+import logging
 
 import astropy.units as u
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session, select
+from sqlmodel import delete
+
+# Логгер для модуля
+logger = logging.getLogger(__name__)
 
 from .config import settings
 from .database import get_session, init_db
@@ -49,13 +54,6 @@ def _to_read(obs: Observation) -> ObservationRead:
     )
 
 
-def _validate_coordinates(ra_hours: float, dec_degrees: float) -> None:
-    if not (0 <= ra_hours < 24):
-        raise HTTPException(status_code=400, detail="Прямое восхождение должно быть в диапазоне 0 ≤ RA < 24 часов.")
-    if not (-90 <= dec_degrees <= 90):
-        raise HTTPException(status_code=400, detail="Склонение должно быть в диапазоне -90° … +90°.")
-
-
 @app.post("/observations", response_model=ObservationRead)
 async def create_observation(
     ra_hours: float = Form(...),
@@ -66,8 +64,6 @@ async def create_observation(
 ):
     if photo.content_type and not photo.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Фото должно быть изображением.")
-
-    _validate_coordinates(ra_hours, dec_degrees)
 
     filename = f"{uuid4().hex}_{photo.filename}"
     destination = settings.upload_dir / filename
@@ -94,19 +90,23 @@ def list_observations(session: Session = Depends(get_session)):
     return [_to_read(obs) for obs in observations]
 
 
-@app.delete("/observations/{observation_id}", status_code=204)
-def delete_observation(observation_id: int, session: Session = Depends(get_session)):
-    observation = session.get(Observation, observation_id)
-    if not observation:
-        raise HTTPException(status_code=404, detail="Наблюдение не найдено.")
+@app.delete("/observations/{obs_id}", status_code=204)
+def delete_observation(obs_id: int, session: Session = Depends(get_session)):
+    obs = session.get(Observation, obs_id)
+    if not obs:
+        raise HTTPException(status_code=404, detail="Наблюдение не найдено")
 
+    # попытка удалить файл фото, если он существует
     try:
-        Path(observation.photo_path).unlink(missing_ok=True)
-    except OSError:
-        pass
+        photo_path = Path(obs.photo_path)
+        if photo_path.exists():
+            photo_path.unlink()
+    except Exception as e:
+        logger.warning("Failed to remove photo file %s: %s", getattr(photo_path, 'as_posix', lambda: str(photo_path))(), e)
 
-    session.delete(observation)
+    session.delete(obs)
     session.commit()
+    return None
 
 
 @app.post("/compute", response_model=ComputeResponse)
@@ -118,8 +118,9 @@ def compute_orbit(session: Session = Depends(get_session)):
     try:
         orbit = derive_orbit(observations)
         closest_time, distance_km, rel_speed = find_closest_approach(orbit)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Не удалось вычислить орбиту: {exc}") from exc
+    except Exception as e:
+        logger.exception("Orbit computation failed")
+        raise HTTPException(status_code=500, detail=str(e))
 
     orbit_data = OrbitElements(
         semi_major_axis_au=float(orbit.a.to(u.AU).value),
@@ -141,7 +142,7 @@ def compute_orbit(session: Session = Depends(get_session)):
         eccentricity=orbit_data.eccentricity,
         inclination_deg=orbit_data.inclination_deg,
         raan_deg=orbit_data.raan_deg,
-        arg_periapsис_deg=orbit_data.arg_periapsis_deg,
+        arg_periapsis_deg=orbit_data.arg_periapsis_deg,
         perihelion_time=orbit_data.perihelion_time,
         closest_approach_time=closest.datetime,
         closest_distance_km=closest.distance_km,
@@ -156,3 +157,33 @@ def compute_orbit(session: Session = Depends(get_session)):
         closest_approach=closest,
         observation_ids=[obs.id for obs in observations],
     )
+
+
+@app.post("/reset")
+def reset_database(session: Session = Depends(get_session)):
+    """Удаляет все наблюдения и решения орбит из БД и очищает папку с загрузками.
+    ВНИМАНИЕ: операция необратима.
+    """
+    # Удаляем строки из таблиц
+    session.exec(delete(OrbitSolution))
+    session.exec(delete(Observation))
+    session.commit()
+
+    # Очищаем папку uploads на хосте/в контейнере
+    try:
+        upload_dir = settings.upload_dir
+        for child in upload_dir.iterdir():
+            try:
+                if child.is_file() or child.is_symlink():
+                    child.unlink()
+                elif child.is_dir():
+                    # рекурсивно удалить директорию
+                    import shutil as _sh
+
+                    _sh.rmtree(child)
+            except Exception as e:
+                logger.warning("Failed to remove upload file %s: %s", child, e)
+    except Exception as e:
+        logger.exception("Failed to clean upload directory: %s", e)
+
+    return {"status": "ok", "message": "Database and uploads cleared"}

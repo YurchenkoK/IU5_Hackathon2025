@@ -243,7 +243,7 @@ function App() {
         <section className="panel">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <h2 style={{ margin: 0 }}>Наблюдения</h2>
-            <span>{formattedObservations.length} / 5</span>
+            <span>{formattedObservations.length} наблюдений (минимум 5 для расчёта)</span>
           </div>
 
           <div className="observations">

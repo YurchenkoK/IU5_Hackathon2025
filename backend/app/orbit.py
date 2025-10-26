@@ -13,6 +13,9 @@ from poliastro.ephem import get_body_barycentric_posvel
 
 from .config import settings
 from .models import Observation
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _observation_to_heliocentric_vector(obs: Observation, distance_au: float) -> Tuple[np.ndarray, datetime]:
@@ -74,7 +77,32 @@ def find_closest_approach(orbit: Orbit) -> Tuple[datetime, float, float]:
 
     for offset in offsets:
         current_epoch = start_time + offset
-        propagated = orbit.propagate(offset)
+        propagated = None
+        # Попытки выполнить propagate; если основной метод падает — попробуем с разными rtol
+        try:
+            propagated = orbit.propagate(offset)
+        except Exception as e:
+            logger.warning("Propagation failed for offset %s: %s", offset, e)
+            # попробовать несколько значений rtol
+            for rtol in (1e-6, 1e-5, 1e-4):
+                try:
+                    propagated = orbit.propagate(offset, rtol=rtol)
+                    logger.info("Propagation succeeded for offset %s with rtol=%s", offset, rtol)
+                    break
+                except Exception as e2:
+                    logger.debug("Propagation retry rtol=%s failed: %s", rtol, e2)
+            # Попробовать численную интеграцию (cowell) как запасной вариант
+            for method in ("cowell",):
+                try:
+                    propagated = orbit.propagate(offset, method=method)
+                    logger.info("Propagation succeeded for offset %s with method=%s", offset, method)
+                    break
+                except Exception as e3:
+                    logger.debug("Propagation retry method=%s failed: %s", method, e3)
+        if propagated is None:
+            # не удалось распространить для этого шага — пропускаем
+            logger.warning("Skipping offset %s because propagation failed", offset)
+            continue
         comet_r = propagated.r.to(u.km).value
         comet_v = propagated.v.to(u.km / u.s).value
 
@@ -87,5 +115,8 @@ def find_closest_approach(orbit: Orbit) -> Tuple[datetime, float, float]:
             min_distance = distance
             min_time = current_epoch
             rel_speed = np.linalg.norm(comet_v - earth_v)
+
+    if min_distance == float("inf"):
+        raise RuntimeError("Propagation failed for all sampled times")
 
     return min_time.to_datetime(), float(min_distance), float(rel_speed)
