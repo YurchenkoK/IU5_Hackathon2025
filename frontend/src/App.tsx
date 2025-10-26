@@ -1,5 +1,6 @@
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
+import styled from 'styled-components';
 
 import {
   API_URL,
@@ -83,6 +84,35 @@ const thumbnailUrl = (path: string) => {
   }
   return `${API_URL}${path}`;
 };
+
+const FileUploadButton = styled.label`
+  display: inline-flex;
+  align-items: center;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #6e8efb 0%, #4a6cf7 100%);
+  color: white;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  border: none;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2);
+    background: linear-gradient(135deg, #5d7df9 0%, #3955e6 100%);
+  }
+
+  &:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  input[type='file'] {
+    display: none;
+  }
+`;
 
 function App() {
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
@@ -284,14 +314,15 @@ function App() {
             </div>
             <div>
               <label htmlFor="photo">Фото кадра</label>
-              <input
-                id="photo"
-                name="photo"
-                type="file"
-                accept="image/*"
-                onChange={(e) => setForm((prev) => ({ ...prev, photo: e.target.files?.[0] ?? null }))}
-                required
-              />
+              {/* Заменяем старую кнопку на новую стилизованную */}
+              <FileUploadButton>
+                <input
+                  type="file"
+                  onChange={(e) => setForm((prev) => ({ ...prev, photo: e.target.files?.[0] ?? null }))}
+                  accept="image/*"
+                />
+                Выберите фото наблюдения
+              </FileUploadButton>
             </div>
             <button type="submit" disabled={submitting}>
               {submitting ? 'Сохраняем…' : 'Сохранить наблюдение'}
@@ -302,7 +333,7 @@ function App() {
         <section className="panel">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <h2 style={{ margin: 0 }}>Наблюдения</h2>
-            <span>{formattedObservations.length} наблюдений (минимум 5 для расчёта)</span>
+            <span>{formattedObservations.length} наблюдений</span>
           </div>
 
           <div className="observations">
@@ -316,7 +347,7 @@ function App() {
                   <div>{obs.localTime}</div>
                 </div>
                 <button className="ghost-button" type="button" onClick={() => handleDelete(obs.id)}>
-                  Уд��лить
+                  Удалить
                 </button>
               </article>
             ))}
