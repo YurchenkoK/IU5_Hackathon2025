@@ -13,7 +13,7 @@ ALGORITHM = "HS256"
 
 
 def authenticate_client(username: str, password: str) -> bool:
-    return username == settings.client_username and password == settings.client_password
+    return username in settings.users and settings.users[username] == password
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -37,7 +37,6 @@ def get_current_client(token: str = Depends(oauth2_scheme)):
             raise credentials_exception
     except JWTError:
         raise credentials_exception
-    if username != settings.client_username:
+    if username not in settings.users:
         raise credentials_exception
     return username
-

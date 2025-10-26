@@ -11,8 +11,12 @@ class Settings(BaseSettings):
     # Authorization settings
     secret_key: str = "change-me-super-secret"
     token_exp_minutes: int = 60
-    client_username: str = "client"
-    client_password: str = "password"
+    users: dict = {
+        "client": "password",
+        "observer1": "pass123",
+        "observer2": "pass456",
+        "observer3": "pass789"
+    }
 
     class Config:
         env_file = ".env"

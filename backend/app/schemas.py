@@ -35,6 +35,7 @@ class ObservationRead(BaseModel):
     dec_degrees: float
     observation_time: datetime
     photo_url: str
+    username: str
 
 
 class OrbitElements(BaseModel):

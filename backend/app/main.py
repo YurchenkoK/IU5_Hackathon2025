@@ -53,6 +53,7 @@ def _to_read(obs: Observation) -> ObservationRead:
         dec_degrees=obs.dec_degrees,
         observation_time=obs.observation_time,
         photo_url=_photo_url(obs),
+        username=obs.username,
     )
 
 
@@ -63,42 +64,73 @@ async def create_observation(
     observation_time: datetime = Form(...),
     photo: UploadFile = File(...),
     session: Session = Depends(get_session),
+    username: str = Depends(get_current_client),
 ):
+    logger.info(f"Creating observation for user {username}")
+
     if photo.content_type and not photo.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Фото должно быть изображением.")
 
-    filename = f"{uuid4().hex}_{photo.filename}"
-    destination = settings.upload_dir / filename
+    try:
+        filename = f"{uuid4().hex}_{photo.filename}"
+        destination = settings.upload_dir / filename
 
-    with destination.open("wb") as dest_file:
-        shutil.copyfileobj(photo.file, dest_file)
+        # Ensure upload directory exists
+        settings.upload_dir.mkdir(parents=True, exist_ok=True)
 
-    observation = Observation(
-        ra_hours=ra_hours,
-        dec_degrees=dec_degrees,
-        observation_time=observation_time,
-        photo_path=str(destination),
-    )
-    session.add(observation)
-    session.commit()
-    session.refresh(observation)
+        # Save the file
+        with destination.open("wb") as dest_file:
+            shutil.copyfileobj(photo.file, dest_file)
 
-    return _to_read(observation)
+        observation = Observation(
+            ra_hours=ra_hours,
+            dec_degrees=dec_degrees,
+            observation_time=observation_time,
+            photo_path=str(destination),
+            username=username,
+        )
+
+        session.add(observation)
+        session.commit()
+        session.refresh(observation)
+
+        logger.info(f"Successfully created observation {observation.id} for user {username}")
+        return _to_read(observation)
+
+    except Exception as e:
+        logger.error(f"Error creating observation: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Ошибка при создании наблюдения: {str(e)}")
 
 
 @app.get("/observations", response_model=List[ObservationRead])
-def list_observations(session: Session = Depends(get_session)):
-    observations = session.exec(select(Observation).order_by(Observation.observation_time)).all()
+def list_observations(
+    session: Session = Depends(get_session),
+    username: str = Depends(get_current_client)
+):
+    # Filter observations by username
+    observations = session.exec(
+        select(Observation)
+        .where(Observation.username == username)
+        .order_by(Observation.observation_time)
+    ).all()
     return [_to_read(obs) for obs in observations]
 
 
 @app.delete("/observations/{obs_id}", status_code=204)
-def delete_observation(obs_id: int, session: Session = Depends(get_session)):
+def delete_observation(
+    obs_id: int,
+    session: Session = Depends(get_session),
+    username: str = Depends(get_current_client)
+):
     obs = session.get(Observation, obs_id)
     if not obs:
         raise HTTPException(status_code=404, detail="Наблюдение не найдено")
 
-    # попытка удалить файл фото, если он существует
+    # Check if observation belongs to current user
+    if obs.username != username:
+        raise HTTPException(status_code=403, detail="Нет прав на удаление этого наблюдения")
+
+    # Try to delete photo file if exists
     try:
         photo_path = Path(obs.photo_path)
         if photo_path.exists():
@@ -112,8 +144,17 @@ def delete_observation(obs_id: int, session: Session = Depends(get_session)):
 
 
 @app.post("/compute", response_model=ComputeResponse)
-def compute_orbit(session: Session = Depends(get_session), username: str = Depends(get_current_client)):
-    observations = session.exec(select(Observation).order_by(Observation.observation_time)).all()
+def compute_orbit(
+    session: Session = Depends(get_session),
+    username: str = Depends(get_current_client)
+):
+    # Get only current user's observations
+    observations = session.exec(
+        select(Observation)
+        .where(Observation.username == username)
+        .order_by(Observation.observation_time)
+    ).all()
+
     if len(observations) < 5:
         raise HTTPException(status_code=400, detail="Нужно минимум 5 наблюдений.")
 

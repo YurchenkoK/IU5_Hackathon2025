@@ -114,6 +114,22 @@ const FileUploadButton = styled.label`
   }
 `;
 
+type HistoryEntry = {
+  id: number;
+  timestamp: string;
+  username: string;
+  orbit: ComputeResponse['orbit'];
+  closestApproach: ComputeResponse['closest_approach'];
+};
+
+// Список доступных пользователей
+const USERS = [
+  { username: 'client', password: 'password' },
+  { username: 'observer1', password: 'pass123' },
+  { username: 'observer2', password: 'pass456' },
+  { username: 'observer3', password: 'pass789' },
+];
+
 function App() {
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [observations, setObservations] = useState<Observation[]>([]);
@@ -125,12 +141,31 @@ function App() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loggedInUser, setLoggedInUser] = useState<string | null>(getAuthToken() ? 'client' : null);
+  const [computationHistory, setComputationHistory] = useState<HistoryEntry[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
     if (loggedInUser) {
       loadObservations();
     }
   }, [loggedInUser]);
+
+  // Загружаем историю при монтировании компонента и смене пользователя
+  useEffect(() => {
+    if (loggedInUser) {
+      const savedHistory = localStorage.getItem('computationHistory');
+      if (savedHistory) {
+        const allHistory = JSON.parse(savedHistory);
+        // Фильтруем историю только для текущего пользователя
+        const userHistory = allHistory.filter((entry: HistoryEntry) => entry.username === loggedInUser);
+        setComputationHistory(userHistory);
+      }
+    }
+  }, [loggedInUser]);
+
+  const filteredHistory = useMemo(() => {
+    return computationHistory.filter(entry => entry.username === loggedInUser);
+  }, [computationHistory, loggedInUser]);
 
   async function loadObservations() {
     try {
@@ -181,6 +216,15 @@ function App() {
     try {
       const response = await requestComputation();
       setResults(response);
+      // Добавляем результат в историю
+      const historyEntry: HistoryEntry = {
+        id: Date.now(),
+        timestamp: new Date().toISOString(),
+        username: loggedInUser!,
+        orbit: response.orbit,
+        closestApproach: response.closest_approach,
+      };
+      setComputationHistory((prev) => [historyEntry, ...prev]);
       setSuccess('Орбита успешно посчитана.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось рассчитать орбиту.');
@@ -204,6 +248,12 @@ function App() {
     e.preventDefault();
     setError(null);
     try {
+      // Проверяем учетные данные из списка пользователей
+      const user = USERS.find(u => u.username === username && u.password === password);
+      if (!user) {
+        throw new Error('Неверные учетные данные');
+      }
+
       const resp = await login(username, password);
       setAuthToken(resp.access_token);
       setLoggedInUser(username);
@@ -262,12 +312,34 @@ function App() {
       <header className="page-header">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
           <div>
-            <p>Лаборатория вдохновлена Don’t Look Up.</p>
+            <p>Лаборатория вдохновлена Don't Look Up.</p>
             <h1>Кометное бюро</h1>
             <p>Добавьте минимум 5 наблюдений, чтобы получить приближенную орбиту и точку максимального сближения.</p>
           </div>
-          <div>
-            {/* Привязываем существующую функцию handleLogout к кнопке, чтобы убрать ошибку о неиспользуемой переменной */}
+          <div style={{ display: 'flex', gap: '1rem' }}>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() => setShowHistory(!showHistory)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+              }}
+            >
+              {showHistory ? '🔽 Скрыть историю' : '🔼 Показать историю'}
+              {computationHistory.length > 0 &&
+                <span style={{
+                  background: '#4a6cf7',
+                  color: 'white',
+                  borderRadius: '999px',
+                  padding: '0.25rem 0.5rem',
+                  fontSize: '0.75rem'
+                }}>
+                  {computationHistory.length}
+                </span>
+              }
+            </button>
             <button type="button" className="ghost-button" onClick={handleLogout}>
               Выйти
             </button>
@@ -399,6 +471,48 @@ function App() {
               <h4>Скорость (км/с)</h4>
               <strong>{formatNumber(closestApproach!.relative_speed_kms)}</strong>
             </div>
+          </div>
+        </section>
+      )}
+
+      {showHistory && (
+        <section className="panel" style={{ marginTop: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h2 style={{ margin: 0 }}>История вычислений для {loggedInUser}</h2>
+            <span>{filteredHistory.length} вычислений</span>
+          </div>
+          <div className="computation-history">
+            {filteredHistory.length === 0 ? (
+              <p style={{ color: '#97a3d6' }}>История пуста</p>
+            ) : (
+              filteredHistory.map((entry) => (
+                <article key={entry.id} className="history-entry" style={{
+                  padding: '1rem',
+                  marginBottom: '1rem',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  borderRadius: '8px',
+                  transition: 'all 0.3s ease'
+                }}>
+                  <div style={{ marginBottom: '0.5rem', color: '#97a3d6' }}>
+                    {new Date(entry.timestamp).toLocaleString()}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                    <div>
+                      <h4>Орбитальные элементы</h4>
+                      <div>a = {formatNumber(entry.orbit.semi_major_axis_au)} а.е.</div>
+                      <div>e = {formatNumber(entry.orbit.eccentricity)}</div>
+                      <div>i = {formatNumber(entry.orbit.inclination_deg)}°</div>
+                    </div>
+                    <div>
+                      <h4>Сближение</h4>
+                      <div>Расстояние: {formatNumber((entry.closestApproach.distance_km ?? 0) / 1000, 2)}k км</div>
+                      <div>Дата: {new Date(entry.closestApproach.datetime).toLocaleString()}</div>
+                      <div>Скорость: {formatNumber(entry.closestApproach.relative_speed_kms)} км/с</div>
+                    </div>
+                  </div>
+                </article>
+              ))
+            )}
           </div>
         </section>
       )}

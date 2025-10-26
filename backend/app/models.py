@@ -17,6 +17,7 @@ class Observation(SQLModel, table=True):
     dec_degrees: float
     observation_time: datetime
     photo_path: str
+    username: str = Field(index=True)  # Add this line
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
