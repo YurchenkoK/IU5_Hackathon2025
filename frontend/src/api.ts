@@ -23,6 +23,14 @@ export async function submitObservation(formData: FormData): Promise<Observation
   return handleResponse<Observation>(res);
 }
 
+export async function deleteObservation(id: number): Promise<void> {
+  const res = await fetch(`${API_URL}/observations/${id}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(detail || 'Не удалось удалить наблюдение');
+  }
+}
+
 export async function requestComputation(): Promise<ComputeResponse> {
   const res = await fetch(`${API_URL}/compute`, { method: 'POST' });
   return handleResponse<ComputeResponse>(res);

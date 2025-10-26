@@ -49,6 +49,13 @@ def _to_read(obs: Observation) -> ObservationRead:
     )
 
 
+def _validate_coordinates(ra_hours: float, dec_degrees: float) -> None:
+    if not (0 <= ra_hours < 24):
+        raise HTTPException(status_code=400, detail="Прямое восхождение должно быть в диапазоне 0 ≤ RA < 24 часов.")
+    if not (-90 <= dec_degrees <= 90):
+        raise HTTPException(status_code=400, detail="Склонение должно быть в диапазоне -90° … +90°.")
+
+
 @app.post("/observations", response_model=ObservationRead)
 async def create_observation(
     ra_hours: float = Form(...),
@@ -59,6 +66,8 @@ async def create_observation(
 ):
     if photo.content_type and not photo.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Фото должно быть изображением.")
+
+    _validate_coordinates(ra_hours, dec_degrees)
 
     filename = f"{uuid4().hex}_{photo.filename}"
     destination = settings.upload_dir / filename
@@ -85,14 +94,32 @@ def list_observations(session: Session = Depends(get_session)):
     return [_to_read(obs) for obs in observations]
 
 
+@app.delete("/observations/{observation_id}", status_code=204)
+def delete_observation(observation_id: int, session: Session = Depends(get_session)):
+    observation = session.get(Observation, observation_id)
+    if not observation:
+        raise HTTPException(status_code=404, detail="Наблюдение не найдено.")
+
+    try:
+        Path(observation.photo_path).unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    session.delete(observation)
+    session.commit()
+
+
 @app.post("/compute", response_model=ComputeResponse)
 def compute_orbit(session: Session = Depends(get_session)):
     observations = session.exec(select(Observation).order_by(Observation.observation_time)).all()
     if len(observations) < 5:
         raise HTTPException(status_code=400, detail="Нужно минимум 5 наблюдений.")
 
-    orbit = derive_orbit(observations)
-    closest_time, distance_km, rel_speed = find_closest_approach(orbit)
+    try:
+        orbit = derive_orbit(observations)
+        closest_time, distance_km, rel_speed = find_closest_approach(orbit)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Не удалось вычислить орбиту: {exc}") from exc
 
     orbit_data = OrbitElements(
         semi_major_axis_au=float(orbit.a.to(u.AU).value),
@@ -114,7 +141,7 @@ def compute_orbit(session: Session = Depends(get_session)):
         eccentricity=orbit_data.eccentricity,
         inclination_deg=orbit_data.inclination_deg,
         raan_deg=orbit_data.raan_deg,
-        arg_periapsis_deg=orbit_data.arg_periapsis_deg,
+        arg_periapsис_deg=orbit_data.arg_periapsis_deg,
         perihelion_time=orbit_data.perihelion_time,
         closest_approach_time=closest.datetime,
         closest_distance_km=closest.distance_km,

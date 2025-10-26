@@ -1,58 +1,74 @@
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { fetchObservations, requestComputation, submitObservation, API_URL } from './api';
+
+import {
+  API_URL,
+  deleteObservation,
+  fetchObservations,
+  requestComputation,
+  submitObservation,
+} from './api';
 import type { ComputeResponse, Observation } from './types';
 
 type FormState = {
   ra: string;
   dec: string;
   time: string;
-  photo?: File | null;
+  photo: File | null;
 };
 
-const getDefaultForm = (): FormState => ({
-  ra: '',
-  dec: '',
-  time: '',
-  photo: null,
-});
+const INITIAL_FORM: FormState = { ra: '', dec: '', time: '', photo: null };
 
 const parseCoordinate = (value: string, mode: 'ra' | 'dec'): number | null => {
   if (!value.trim()) {
     return null;
   }
+
   const trimmed = value.trim();
   const sign = mode === 'dec' && trimmed.startsWith('-') ? -1 : 1;
   const cleaned = trimmed.replace(/^[+-]/, '');
   const fragments = cleaned.split(/[:\s]+/).filter(Boolean);
-
   const numbers = fragments.map((part) => Number(part));
+
   if (numbers.some((num) => Number.isNaN(num))) {
     return null;
   }
 
-  let decimal: number;
-  if (numbers.length === 1) {
-    decimal = numbers[0];
-  } else {
-    const [major, minor = 0, seconds = 0] = numbers;
-    decimal = major + minor / 60 + seconds / 3600;
-  }
+  const [major, minor = 0, seconds = 0] = numbers;
+  const decimal = major + minor / 60 + seconds / 3600;
 
   if (mode === 'ra') {
+    if (decimal < 0 || decimal >= 24) {
+      return null;
+    }
     return decimal;
   }
-  return sign * decimal;
+
+  const decValue = sign * decimal;
+  if (decValue < -90 || decValue > 90) {
+    return null;
+  }
+  return decValue;
 };
 
-const formatNumber = (value: number, digits = 3) => value.toFixed(digits);
+const formatNumber = (value: number, digits = 3) => (Number.isFinite(value) ? value.toFixed(digits) : '—');
 
 const toIsoString = (value: string) => {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
+  if (!Number.isNaN(date.getTime())) {
+    return date.toISOString();
+  }
+
+  const match = value.trim().match(/^(\d{2})[.\-/](\d{2})[.\-/](\d{4})\s+(\d{2}):(\d{2})$/);
+  if (!match) {
     return null;
   }
-  return date.toISOString();
+  const [, dd, mm, yyyy, hh, min] = match;
+  const fallback = new Date(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh), Number(min));
+  if (Number.isNaN(fallback.getTime())) {
+    return null;
+  }
+  return fallback.toISOString();
 };
 
 const thumbnailUrl = (path: string) => {
@@ -66,7 +82,7 @@ const thumbnailUrl = (path: string) => {
 };
 
 function App() {
-  const [form, setForm] = useState<FormState>(getDefaultForm());
+  const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [observations, setObservations] = useState<Observation[]>([]);
   const [results, setResults] = useState<ComputeResponse | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -87,8 +103,6 @@ function App() {
     }
   }
 
-  const enoughObservations = observations.length >= 5;
-
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
@@ -97,8 +111,9 @@ function App() {
     const ra = parseCoordinate(form.ra, 'ra');
     const dec = parseCoordinate(form.dec, 'dec');
     const isoTime = toIsoString(form.time);
+
     if (ra === null || dec === null || !isoTime || !form.photo) {
-      setError('Заполните координаты, время и приложите фото.');
+      setError('Нужны валидные координаты (0≤RA<24, -90≤Dec≤90), дата/время и кадр.');
       return;
     }
 
@@ -112,8 +127,8 @@ function App() {
 
       const created = await submitObservation(payload);
       setObservations((prev) => [...prev, created]);
-      setForm(getDefaultForm());
-      setSuccess('Наблюдение добавлено!');
+      setForm(INITIAL_FORM);
+      setSuccess('Наблюдение сохранено!');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка при добавлении наблюдения.');
     } finally {
@@ -128,7 +143,7 @@ function App() {
     try {
       const response = await requestComputation();
       setResults(response);
-      setSuccess('Орбита обновлена.');
+      setSuccess('Орбита успешно посчитана.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось рассчитать орбиту.');
     } finally {
@@ -136,24 +151,39 @@ function App() {
     }
   };
 
-  const closestApproach = results?.closest_approach;
-  const orbit = results?.orbit;
+  const handleDelete = async (id: number) => {
+    setError(null);
+    setSuccess(null);
+    try {
+      await deleteObservation(id);
+      setObservations((prev) => prev.filter((obs) => obs.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось удалить наблюдение.');
+    }
+  };
 
   const formattedObservations = useMemo(
     () =>
-      observations.map((obs) => ({
-        ...obs,
-        localTime: new Date(obs.observation_time).toLocaleString(),
-      })),
+      observations
+        .slice()
+        .sort((a, b) => new Date(a.observation_time).getTime() - new Date(b.observation_time).getTime())
+        .map((obs) => ({
+          ...obs,
+          localTime: new Date(obs.observation_time).toLocaleString(),
+        })),
     [observations],
   );
+
+  const enoughObservations = formattedObservations.length >= 5;
+  const orbit = results?.orbit;
+  const closestApproach = results?.closest_approach;
 
   return (
     <>
       <header className="page-header">
-        <p>Проект Don’t Look Up · трек «Комета»</p>
-        <h1>Кометная лаборатория</h1>
-        <p>Соберите минимум 5 наблюдений, чтобы оценить орбиту и прогноз сближения с Землей.</p>
+        <p>Лаборатория вдохновлена Don’t Look Up.</p>
+        <h1>Кометное бюро</h1>
+        <p>Добавьте минимум 5 наблюдений, чтобы получить приближенную орбиту и точку максимального сближения.</p>
       </header>
 
       <div className="grid">
@@ -205,7 +235,7 @@ function App() {
               />
             </div>
             <button type="submit" disabled={submitting}>
-              {submitting ? 'Загрузка...' : 'Сохранить наблюдение'}
+              {submitting ? 'Сохраняем…' : 'Сохранить наблюдение'}
             </button>
           </form>
         </section>
@@ -213,7 +243,7 @@ function App() {
         <section className="panel">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <h2 style={{ margin: 0 }}>Наблюдения</h2>
-            <span>{observations.length} / 5</span>
+            <span>{formattedObservations.length} / 5</span>
           </div>
 
           <div className="observations">
@@ -226,17 +256,15 @@ function App() {
                   <strong>Dec {formatNumber(obs.dec_degrees, 2)}°</strong>
                   <div>{obs.localTime}</div>
                 </div>
+                <button className="ghost-button" type="button" onClick={() => handleDelete(obs.id)}>
+                  Удалить
+                </button>
               </article>
             ))}
           </div>
 
-          <button
-            type="button"
-            onClick={handleCompute}
-            disabled={!enoughObservations || computing}
-            style={{ marginTop: '1.5rem' }}
-          >
-            {computing ? 'Считаем...' : 'Рассчитать орбиту'}
+          <button type="button" onClick={handleCompute} disabled={!enoughObservations || computing} style={{ marginTop: '1.5rem' }}>
+            {computing ? 'Считаем…' : 'Рассчитать орбиту'}
           </button>
         </section>
       </div>
@@ -270,11 +298,11 @@ function App() {
               <strong>{new Date(orbit!.perihelion_time).toLocaleString()}</strong>
             </div>
             <div className="result-card">
-              <h4>Мин. дистанция (км)</h4>
-              <strong>{formatNumber(closestApproach!.distance_km / 1000, 2)}k</strong>
+              <h4>d<sub>min</sub> (км)</h4>
+              <strong>{formatNumber((closestApproach!.distance_km ?? 0) / 1000, 2)}k</strong>
             </div>
             <div className="result-card">
-              <h4>Дата сближения</h4>
+              <h4>Когда</h4>
               <strong>{new Date(closestApproach!.datetime).toLocaleString()}</strong>
             </div>
             <div className="result-card">
@@ -290,11 +318,7 @@ function App() {
           {error}
         </div>
       )}
-      {success && (
-        <div className="status success">
-          {success}
-        </div>
-      )}
+      {success && <div className="status success">{success}</div>}
     </>
   );
 }
