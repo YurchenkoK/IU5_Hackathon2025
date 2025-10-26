@@ -339,11 +339,11 @@ function App() {
         <h1>Кометное бюро</h1>
         <p>Добавьте минимум 5 наблюдений, чтобы получить приближенную орбиту и точку максимального сближения.</p>
         <p style={{ textAlign: 'right' }}>
-          Пользователь: <strong>{user.username}</strong> | 
+          Пользователь: <strong>{user.username}</strong>
           <button 
             onClick={handleLogout}
             style={{ 
-              marginLeft: '10px', 
+              marginLeft: '15px', 
               padding: '3px 8px', 
               cursor: 'pointer',
               fontSize: '0.85rem'
@@ -393,6 +393,25 @@ function App() {
             </div>
             <div>
               <label htmlFor="photo">Фото кадра</label>
+              <label 
+                htmlFor="photo" 
+                style={{
+                  display: 'inline-block',
+                  padding: '10px 20px',
+                  backgroundColor: '#4a5568',
+                  color: 'white',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  fontWeight: '500',
+                  transition: 'background-color 0.2s',
+                  border: '2px solid #4a5568'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2d3748'}
+                onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#4a5568'}
+              >
+                📷 {form.photo ? form.photo.name : 'Выберите файл'}
+              </label>
               <input
                 id="photo"
                 name="photo"
@@ -400,6 +419,7 @@ function App() {
                 accept="image/*"
                 onChange={(e) => setForm((prev) => ({ ...prev, photo: e.target.files?.[0] ?? null }))}
                 required
+                style={{ display: 'none' }}
               />
             </div>
             <button type="submit" disabled={submitting}>
