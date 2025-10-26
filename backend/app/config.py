@@ -8,6 +8,11 @@ class Settings(BaseSettings):
     upload_dir: Path = Path("uploads")
     frontend_origin: str = "http://localhost:5173"
     sample_propagation_days: int = 365
+    # Authorization settings
+    secret_key: str = "change-me-super-secret"
+    token_exp_minutes: int = 60
+    client_username: str = "client"
+    client_password: str = "password"
 
     class Config:
         env_file = ".env"

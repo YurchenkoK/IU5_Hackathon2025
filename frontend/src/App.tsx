@@ -7,6 +7,9 @@ import {
   fetchObservations,
   requestComputation,
   submitObservation,
+  login,
+  setAuthToken,
+  getAuthToken,
 } from './api';
 import type { ComputeResponse, Observation } from './types';
 
@@ -89,10 +92,15 @@ function App() {
   const [computing, setComputing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loggedInUser, setLoggedInUser] = useState<string | null>(getAuthToken() ? 'client' : null);
 
   useEffect(() => {
-    loadObservations();
-  }, []);
+    if (loggedInUser) {
+      loadObservations();
+    }
+  }, [loggedInUser]);
 
   async function loadObservations() {
     try {
@@ -162,6 +170,25 @@ function App() {
     }
   };
 
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      const resp = await login(username, password);
+      setAuthToken(resp.access_token);
+      setLoggedInUser(username);
+      setSuccess('Вошли как ' + username);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось войти');
+    }
+  };
+
+  const handleLogout = () => {
+    setAuthToken(null);
+    setLoggedInUser(null);
+    setSuccess('Вышли');
+  };
+
   const formattedObservations = useMemo(
     () =>
       observations
@@ -178,12 +205,44 @@ function App() {
   const orbit = results?.orbit;
   const closestApproach = results?.closest_approach;
 
+  // Показываем экран входа первым, пока нет токена
+  if (!loggedInUser) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+        <div style={{ width: 420, background: 'var(--panel-bg, #071026)', padding: '2rem', borderRadius: 12, boxShadow: '0 6px 30px rgba(0,0,0,0.6)' }}>
+          <h2 style={{ marginTop: 0 }}>Вход</h2>
+          <form onSubmit={handleLogin} style={{ display: 'grid', gap: '0.75rem' }}>
+            <input placeholder="username" value={username} onChange={(e) => setUsername(e.target.value)} />
+            <input placeholder="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <button type="submit" style={{ padding: '0.6rem 1rem' }}>Войти</button>
+            </div>
+          </form>
+          {error && <div style={{ marginTop: '0.75rem', color: '#ff8080' }}>{error}</div>}
+          <div style={{ marginTop: '1rem', color: '#97a3d6', fontSize: 12 }}>
+            Используйте default: <strong>client</strong> / <strong>password</strong>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <header className="page-header">
-        <p>Лаборатория вдохновлена Don’t Look Up.</p>
-        <h1>Кометное бюро</h1>
-        <p>Добавьте минимум 5 наблюдений, чтобы получить приближенную орбиту и точку максимального сближения.</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+          <div>
+            <p>Лаборатория вдохновлена Don’t Look Up.</p>
+            <h1>Кометное бюро</h1>
+            <p>Добавьте минимум 5 наблюдений, чтобы получить приближенную орбиту и точку максимального сближения.</p>
+          </div>
+          <div>
+            {/* Привязываем существующую функцию handleLogout к кнопке, чтобы убрать ошибку о неиспользуемой переменной */}
+            <button type="button" className="ghost-button" onClick={handleLogout}>
+              Выйти
+            </button>
+          </div>
+        </div>
       </header>
 
       <div className="grid">
@@ -257,7 +316,7 @@ function App() {
                   <div>{obs.localTime}</div>
                 </div>
                 <button className="ghost-button" type="button" onClick={() => handleDelete(obs.id)}>
-                  Удалить
+                  Уд��лить
                 </button>
               </article>
             ))}

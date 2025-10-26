@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session, select
 from sqlmodel import delete
+from fastapi.security import OAuth2PasswordRequestForm
 
 # Логгер для модуля
 logger = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ from .database import get_session, init_db
 from .models import Observation, OrbitSolution
 from .orbit import derive_orbit, find_closest_approach
 from .schemas import ClosestApproach, ComputeResponse, ObservationRead, OrbitElements
+from .auth import authenticate_client, create_access_token, get_current_client
 
 app = FastAPI(title="Comet Orbit Lab")
 
@@ -110,7 +112,7 @@ def delete_observation(obs_id: int, session: Session = Depends(get_session)):
 
 
 @app.post("/compute", response_model=ComputeResponse)
-def compute_orbit(session: Session = Depends(get_session)):
+def compute_orbit(session: Session = Depends(get_session), username: str = Depends(get_current_client)):
     observations = session.exec(select(Observation).order_by(Observation.observation_time)).all()
     if len(observations) < 5:
         raise HTTPException(status_code=400, detail="Нужно минимум 5 наблюдений.")
@@ -160,7 +162,7 @@ def compute_orbit(session: Session = Depends(get_session)):
 
 
 @app.post("/reset")
-def reset_database(session: Session = Depends(get_session)):
+def reset_database(session: Session = Depends(get_session), username: str = Depends(get_current_client)):
     """Удаляет все наблюдения и решения орбит из БД и очищает папку с загрузками.
     ВНИМАНИЕ: операция необратима.
     """
@@ -187,3 +189,11 @@ def reset_database(session: Session = Depends(get_session)):
         logger.exception("Failed to clean upload directory: %s", e)
 
     return {"status": "ok", "message": "Database and uploads cleared"}
+
+
+@app.post('/login')
+def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    if not authenticate_client(form_data.username, form_data.password):
+        raise HTTPException(status_code=400, detail='Incorrect username or password')
+    access_token = create_access_token(data={"sub": form_data.username})
+    return {"access_token": access_token, "token_type": "bearer"}
