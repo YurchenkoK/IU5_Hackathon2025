@@ -342,7 +342,12 @@ function App() {
           Пользователь: <strong>{user.username}</strong> | 
           <button 
             onClick={handleLogout}
-            style={{ marginLeft: '10px', padding: '5px 10px', cursor: 'pointer' }}
+            style={{ 
+              marginLeft: '10px', 
+              padding: '3px 8px', 
+              cursor: 'pointer',
+              fontSize: '0.85rem'
+            }}
           >
             Выйти
           </button>
