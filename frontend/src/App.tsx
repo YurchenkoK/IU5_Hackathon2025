@@ -338,7 +338,7 @@ function App() {
         <p>Лаборатория вдохновлена Don't Look Up.</p>
         <h1>Кометное бюро</h1>
         <p>Добавьте минимум 5 наблюдений, чтобы получить приближенную орбиту и точку максимального сближения.</p>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '15px' }}>
           <span>Пользователь: <strong>{user.username}</strong></span>
           <button 
             onClick={handleLogout}
